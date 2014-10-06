@@ -7,9 +7,9 @@ class TxNode:
     def TxData(self, msg):
         self.txData = msg.data
         self.dataLen = msg.length
-        self.dataIntOffset = 0
+        self.dataIntOffset = 30
         self.dataArrayOffset = 0
-        return self.txData
+        return TxDataMessage(self.txData, self.dataLen)
 
     def Symbol(self, msg):
         self.curSymbol = msg.symbol
@@ -41,7 +41,7 @@ class TxNode:
         self.curSymbol = 0
         self.txData = 0
         self.dataLen = 0
-        self.dataIntOffset = 0
+        self.dataIntOffset = 30
         self.dataArrayOffset = 0
         self.mask = mask
         self.msgFunction = {1 : self.TxData,
@@ -62,10 +62,10 @@ class TxNode:
     def getNextSymbol(self):
         nextBits = -1
         if self.dataLen >= 2:
-            nextBits = (0x3 & self.txData[self.dataArrayOffset]) << self.dataIntOffset
-            self.dataIntOffset += 2
-            if self.dataIntOffset == 32:
-                self.dataIntOffset = 0
+            nextBits = 0x3 & (self.txData[self.dataArrayOffset] >> self.dataIntOffset)
+            self.dataIntOffset -= 2
+            if self.dataIntOffset < 0:
+                self.dataIntOffset = 30
                 self.dataArrayOffset += 1
             self.dataLen -= 2
         elif self.dataLen == 1:          
@@ -86,3 +86,27 @@ class TxNode:
             return 0
 
         return 0x80000000 >> self.mask[nextSymbol]   
+
+
+
+if __name__ == "__main__":
+    txn = TxNode()
+    txn.msgFunction[1](TxDataMessage([0xa50fa50f],31))
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)

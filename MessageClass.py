@@ -18,5 +18,5 @@ class StatusMessage(Message):
 
 class SymbolMessage(Message):
     def __init__(self,symbol):
-        self.ty = 6
+        self.ty = 2
         self.symbol = symbol
