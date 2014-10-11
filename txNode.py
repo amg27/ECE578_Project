@@ -6,15 +6,15 @@ class TxNode:
     #The following function are for a switch case look up dictionary thing
     def TxData(self, msg):
         self.txData = msg.data
-        self.dataLen = msg.length
-        self.dataIntOffset = 30
-        self.dataArrayOffset = 0
+        self.txdataLen = msg.length
+        self.txdataIntOffset = 30
+        self.txdataArrayOffset = 0
         return TxDataMessage(self.txData, self.dataLen)
 
     def Symbol(self, msg):
-        self.curSymbol = msg.symbol
-        #todo: rx msg proccessing
-       
+        #Rx msg proccessing
+        self.getNextRxBits(msg.symbol)
+
         # send next tx bit
         return SymbolMessage(self.getNextSymbol())
 
@@ -28,7 +28,7 @@ class TxNode:
 
 #todo: include rx status
     def Status(self, msg):
-        return StatusMessage(self.dataLen)
+        return StatusMessage([self.txdataLen self.rxdataLen])
 
     # init fucntion       
     # mask[] is the index in the symbol array
@@ -36,14 +36,19 @@ class TxNode:
     # mask[1] is 1 then data is 01
     # mask[2] is 1 then data is 11
     # mask[3] is 1 then data is 10
-    def __init__(self,seed=1,mask = [0,1,2,3]):
+    def __init__(self,seed=1,txmask = [0,1,2,3], rxmask = [16,17,18,19]):
         self.seed = seed
         self.curSymbol = 0
         self.txData = 0
-        self.dataLen = 0
-        self.dataIntOffset = 30
-        self.dataArrayOffset = 0
-        self.mask = mask
+        self.rxData = 0
+        self.txdataLen = 0
+        self.txdataIntOffset = 30
+        self.txdataArrayOffset = 0
+        self.rxdataIntOffset = 30
+        self.rxdataArrayOffset = 0
+        self.rxdataLen = 0
+        self.txmask = txmask
+        self.rxmask = rxmask
         self.msgFunction = {1 : self.TxData,
                     2 : self.Symbol,
                     4 : self.Error,
@@ -58,19 +63,44 @@ class TxNode:
             conn.send(self.msgFunction[incMsg.ty](incMsg))
         conn.close()
 
+    # receive next 2 bits 
+    def getNextRxBits(self, symbol):
+        s0Mask = 0x80000000 >> self.rxmask[0]
+        s1Mask = 0x80000000 >> self.rxmask[1]
+        s2Mask = 0x80000000 >> self.rxmask[2]
+        s3Mask = 0x80000000 >> self.rxmask[3]
+        
+        if s0Mask & symbol = 1:
+            curBits = 0
+        elif s1Mask $ symbol = 1:
+            curBits = 1
+        elif s2Mask & symbol = 1:
+            curBits = 3
+        elif s3Mask $ symbol = 1:
+            curBits = 2
+        else:
+            curBits = 0
+        
+        self.rxdata |= curBits << self.rxdataIntOffset
+        self.rxdataIntOffset -= 2
+        if self.rxdataIntOffset < 0:
+            self.rxdataIntOffset = 30
+            self.rxdataArrayOffset += 1
+        self.rxdataLen += 2
+
     # returns the next bit to transmit
     def getNextSymbol(self):
         nextBits = -1
         if self.dataLen >= 2:
-            nextBits = 0x3 & (self.txData[self.dataArrayOffset] >> self.dataIntOffset)
-            self.dataIntOffset -= 2
-            if self.dataIntOffset < 0:
-                self.dataIntOffset = 30
-                self.dataArrayOffset += 1
-            self.dataLen -= 2
-        elif self.dataLen == 1:          
-            nextBits = (0x2 & self.txData[self.dataArrayOffset]) << self.dataIntOffset
-            self.dataLen -=1
+            nextBits = 0x3 & (self.txData[self.txdataArrayOffset] >> self.txdataIntOffset)
+            self.txdataIntOffset -= 2
+            if self.txdataIntOffset < 0:
+                self.txdataIntOffset = 30
+                self.txdataArrayOffset += 1
+            self.txdataLen -= 2
+        elif self.txdataLen == 1:          
+            nextBits = (0x2 & self.txData[self.dataArrayOffset]) << self.txdataIntOffset
+            self.txdataLen -=1
 
 
 
@@ -85,7 +115,7 @@ class TxNode:
         else:
             return 0
 
-        return 0x80000000 >> self.mask[nextSymbol]   
+        return 0x80000000 >> self.txmask[nextSymbol]   
 
 
 
