@@ -15,16 +15,24 @@ if __name__ == '__main__':
 
     rc = runControl(5)
     
-    txNode1 = Node(seed=1,txmask=[0,1],rxmask=[16,17])
-    txNode2 = Node(seed=2,txmask=[4,5],rxmask=[20,21])
-    txNode3 = Node(seed=3,txmask=[8,9],rxmask=[24,25])
-    txNode4 = Node(seed=4,txmask=[12,13],rxmask=[28,29])
+    # link number 1
+    txNode1 = Node(seed=1,txmask=[0,1],rxmask=[16,17],header=0xf9a80f12)
+    # link number 10
+    txNode2 = Node(seed=2,txmask=[4,5],rxmask=[20,21],header=0xf9a85f12)
+    # link number 100
+    txNode3 = Node(seed=3,txmask=[8,9],rxmask=[24,25],header=0xf9ab2712)
+    # link number 200
+    txNode4 = Node(seed=4,txmask=[12,13],rxmask=[28,29],header=0xf9ae4712)
 
 
-    rxNode1 = Node(seed=1,rxmask=[0,1],txmask=[16,17])
-    rxNode2 = Node(seed=2,rxmask=[4,5],txmask=[20,21])
-    rxNode3 = Node(seed=3,rxmask=[8,9],txmask=[24,25])
-    rxNode4 = Node(seed=4,rxmask=[12,13],txmask=[28,29])
+    # link number 1
+    rxNode1 = Node(seed=1,rxmask=[0,1],txmask=[16,17],header=0xf9a80f12)
+    # link number 10
+    rxNode2 = Node(seed=2,rxmask=[4,5],txmask=[20,21],header=0xf9a85f12)
+    # link number 100
+    rxNode3 = Node(seed=3,rxmask=[8,9],txmask=[24,25],header=0xf9ab2712)
+    # link number 200
+    rxNode4 = Node(seed=4,rxmask=[12,13],txmask=[28,29],header=0xf9ae4712)
 
     
     
