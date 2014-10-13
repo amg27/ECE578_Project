@@ -1,7 +1,7 @@
 from multiprocessing import Process, Pipe
-from MessageClass import TxDataMessage, SymbolMessage, StatusMessage
+from MessageClass import * 
 
-class TxNode:
+class Node:
 
     #The following function are for a switch case look up dictionary thing
     def TxData(self, msg):
@@ -9,7 +9,7 @@ class TxNode:
         self.txdataLen = msg.length
         self.txdataIntOffset = 30
         self.txdataArrayOffset = 0
-        return TxDataMessage(self.txData, self.dataLen)
+        return TxDataMessage(self.txData, self.txdataLen)
 
     def Symbol(self, msg):
         #Rx msg proccessing
@@ -24,11 +24,11 @@ class TxNode:
         return self.error
 
     def RxData(self, msg):
-        return 0
+        return RxDataMessage(data=self.rxData,length=self.rxdataLen)
 
 #todo: include rx status
     def Status(self, msg):
-        return StatusMessage([self.txdataLen self.rxdataLen])
+        return StatusMessage([self.txdataLen, self.rxdataLen])
 
     # init fucntion       
     # mask[] is the index in the symbol array
@@ -57,7 +57,7 @@ class TxNode:
                     }
 
     # main running function    
-    def runTxNode(self,conn):
+    def runNode(self,conn):
         while conn.poll(2):
             incMsg = conn.recv()
             conn.send(self.msgFunction[incMsg.ty](incMsg))
@@ -70,18 +70,19 @@ class TxNode:
         s2Mask = 0x80000000 >> self.rxmask[2]
         s3Mask = 0x80000000 >> self.rxmask[3]
         
-        if s0Mask & symbol = 1:
+        # fix this if longer symbols are used
+        if s0Mask & symbol[0] >= 1:
             curBits = 0
-        elif s1Mask $ symbol = 1:
+        elif s1Mask & symbol[0] >= 1:
             curBits = 1
-        elif s2Mask & symbol = 1:
+        elif s2Mask & symbol[0] >= 1:
             curBits = 3
-        elif s3Mask $ symbol = 1:
+        elif s3Mask & symbol[0] >= 1:
             curBits = 2
         else:
             curBits = 0
         
-        self.rxdata |= curBits << self.rxdataIntOffset
+        self.rxData |= curBits << self.rxdataIntOffset
         self.rxdataIntOffset -= 2
         if self.rxdataIntOffset < 0:
             self.rxdataIntOffset = 30
@@ -91,7 +92,7 @@ class TxNode:
     # returns the next bit to transmit
     def getNextSymbol(self):
         nextBits = -1
-        if self.dataLen >= 2:
+        if self.txdataLen >= 2:
             nextBits = 0x3 & (self.txData[self.txdataArrayOffset] >> self.txdataIntOffset)
             self.txdataIntOffset -= 2
             if self.txdataIntOffset < 0:
@@ -120,23 +121,15 @@ class TxNode:
 
 
 if __name__ == "__main__":
-    txn = TxNode()
+    txn = Node()
     txn.msgFunction[1](TxDataMessage([0xa50fa50f],31))
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
-    print "%x_%i"%(txn.getNextSymbol(),txn.dataLen)
+    txn.getNextRxBits([0x00000000])
+    txn.getNextRxBits([0x00001000])
+    txn.getNextRxBits([0x00001000])
+    txn.getNextRxBits([0x00004000])
+    txn.getNextRxBits([0x00004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00002000])
+    txn.getNextRxBits([0x00002000])
+    print '%8x'%txn.rxData

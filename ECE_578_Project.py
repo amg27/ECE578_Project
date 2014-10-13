@@ -1,7 +1,7 @@
 from multiprocessing import Process, Pipe
 from controller import runControl 
 from MessageClass import * 
-from txNode import TxNode
+from Node import Node
 
 
 curSymbol = 0
@@ -15,16 +15,16 @@ if __name__ == '__main__':
 
     rc = runControl(5)
     
-    txNode1 = TxNode(seed=1,txmask=[0,1,2,3],rxmask=[16,17,18,19])
-    txNode2 = TxNode(seed=2,txmask=[4,5,6,7],rxmask=[20,21,22,23])
-    txNode3 = TxNode(seed=3,txmask=[8,9,10,11],rxmask=[24,25,26,27])
-    txNode4 = TxNode(seed=4,txmask=[12,13,14,15],rxmask=[28,29,30,31])
+    txNode1 = Node(seed=1,txmask=[0,1,2,3],rxmask=[16,17,18,19])
+    txNode2 = Node(seed=2,txmask=[4,5,6,7],rxmask=[20,21,22,23])
+    txNode3 = Node(seed=3,txmask=[8,9,10,11],rxmask=[24,25,26,27])
+    txNode4 = Node(seed=4,txmask=[12,13,14,15],rxmask=[28,29,30,31])
 
 
-    rxNode1 = TxNode(seed=1,rxmask=[0,1,2,3],txmask=[16,17,18,19])
-    rxNode2 = TxNode(seed=2,rxmask=[4,5,6,7],txmask=[20,21,22,23])
-    rxNode3 = TxNode(seed=3,rxmask=[8,9,10,11],txmask=[24,25,26,27])
-    rxNode4 = TxNode(seed=4,rxmask=[12,13,14,15],txmask=[28,29,30,31])
+    rxNode1 = Node(seed=1,rxmask=[0,1,2,3],txmask=[16,17,18,19])
+    rxNode2 = Node(seed=2,rxmask=[4,5,6,7],txmask=[20,21,22,23])
+    rxNode3 = Node(seed=3,rxmask=[8,9,10,11],txmask=[24,25,26,27])
+    rxNode4 = Node(seed=4,rxmask=[12,13,14,15],txmask=[28,29,30,31])
 
     
     
@@ -40,14 +40,14 @@ if __name__ == '__main__':
     prx3_conn, rx3_conn = Pipe(True)
     prx4_conn, rx4_conn = Pipe(True)
     
-    ptx1 = Process(target=txNode1.runTxNode, args=(tx1_conn,))
-    ptx2 = Process(target=txNode2.runTxNode, args=(tx2_conn,))
-    ptx3 = Process(target=txNode3.runTxNode, args=(tx3_conn,))
-    ptx4 = Process(target=txNode4.runTxNode, args=(tx4_conn,))
-    prx1 = Process(target=rxNode1.runTxNode, args=(rx1_conn,))
-    prx2 = Process(target=rxNode2.runTxNode, args=(rx2_conn,))
-    prx3 = Process(target=rxNode3.runTxNode, args=(rx3_conn,))
-    prx4 = Process(target=rxNode4.runTxNode, args=(rx4_conn,))
+    ptx1 = Process(target=txNode1.runNode, args=(tx1_conn,))
+    ptx2 = Process(target=txNode2.runNode, args=(tx2_conn,))
+    ptx3 = Process(target=txNode3.runNode, args=(tx3_conn,))
+    ptx4 = Process(target=txNode4.runNode, args=(tx4_conn,))
+    prx1 = Process(target=rxNode1.runNode, args=(rx1_conn,))
+    prx2 = Process(target=rxNode2.runNode, args=(rx2_conn,))
+    prx3 = Process(target=rxNode3.runNode, args=(rx3_conn,))
+    prx4 = Process(target=rxNode4.runNode, args=(rx4_conn,))
     ptx1.start()
     ptx2.start()
     ptx3.start()
@@ -75,12 +75,12 @@ if __name__ == '__main__':
     ptx3_conn.recv()
     ptx4_conn.recv()
     
-    nextSymbol = 0
+    nextSymbol = [0]
     ndone = 1
     countLoops = 0
     while ndone == 1:
         curSymbol = nextSymbol
-        nextSymbol = 0
+        nextSymbol = [0]
 
         # send current frame to all Rx/Tx nodes
         sm = SymbolMessage(curSymbol)
@@ -92,11 +92,12 @@ if __name__ == '__main__':
             if con.poll(2):
                 nextS = con.recv()
                 if nextS.ty == 2:
-                    nextSymbol |= nextS.symbol
+                    nextSymbol[0] |= nextS.symbol
                # else:    
                     
 
-        print "%8x"%(nextSymbol)
+        print "%8x"%(nextSymbol[0])
+        
        
         # get tx status
         ptx1_conn.send(Message(6))
@@ -111,7 +112,12 @@ if __name__ == '__main__':
 
     # get rx messages        
     for con in clientPool:
-        con.send(sm)
+        con.send(Message(5))
+    for con in clientPool:
+        if con.poll(2):
+            smsg = con.recv()
+            tempData = smsg.data << 2
+            print '%8x'%tempData
 
     ptx1.join()
     ptx1_conn.close()

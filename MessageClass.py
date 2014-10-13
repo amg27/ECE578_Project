@@ -10,6 +10,12 @@ class TxDataMessage(Message):
         self.data = data
         self.length = length
 
+class RxDataMessage(Message):
+    def __init__(self,data=0,length=0):
+        self.ty = 1
+        self.data = data
+        self.length = length
+
 class StatusMessage(Message):
     def __init__(self, status):
         self.ty = 6
