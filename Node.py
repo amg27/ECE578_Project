@@ -48,6 +48,7 @@ class Node:
         self.rxdataArrayOffset = 0
         self.rxdataLen = 0
         self.rxHeaderFound = False
+        self.rxHeaderMask = 0x80000000
         self.txmask = txmask
         self.rxmask = rxmask
         self.msgFunction = {1 : self.TxData,
@@ -71,15 +72,15 @@ class Node:
         
         # fix this if longer symbols are used
         if s0Mask & symbol[0] >= 1:
-            curBits = 0
+            curBit = 0
         elif s1Mask & symbol[0] >= 1:
-            curBits = 1
+            curBit = 1
         else:
-            curBits = 0
+            curBit = 0
         
         # add to data payload
         if self.rxHeaderFound:
-            self.rxData[self.rxdataArrayOffset] |= curBits << self.rxdataIntOffset
+            self.rxData[self.rxdataArrayOffset] |= curBit << self.rxdataIntOffset
             self.rxdataIntOffset -= 1
             if self.rxdataIntOffset < 0:
                 self.rxdataIntOffset = 31
@@ -88,7 +89,13 @@ class Node:
             self.rxdataLen += 1
         else:
             # header search
-            
+            if not (((self.rxHeaderMask & self.header) > 1) ^ (curBit == 1)):  
+                self.rxHeaderMask = self.rxHeaderMask >> 1
+                if self.rxHeaderMask == 0:
+                    self.rxHeaderFound = True
+            else:
+                self.rfHeaderMask = 31
+
     # returns the next bit to transmit
     def getNextSymbol(self):
         nextBits = -1
