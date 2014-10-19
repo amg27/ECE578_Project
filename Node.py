@@ -86,6 +86,9 @@ class Node:
         self.rxBufferBit = True
         self.rxPrevState = 0
         self.rxHeaderMask = 0x80000000
+        self.rxErrorDetect = False
+
+
         self.txmask = txmask
         self.rxmask = rxmask
         
@@ -118,7 +121,6 @@ class Node:
             curBit = 0
 
         if self.rxBufferBit: # Store current bit
-            self.rxBuffer = self.rxBuffer << 1;
             self.rxBuffer |= curBit
             self.rxBufferBit = False
         else: # get current state
@@ -130,35 +132,130 @@ class Node:
             
             # Get Data
             rxBit = -1
-            if self.rxPrevState == 0 and rxCurState == 0:
-                rxBit = 0
-                self.rxPrevState = 00
-            elif self.rxPrevState == 0 and rxCurState == 3:
-                rxBit = 1
-                self.rxPrevState = 2
-            elif self.rxPrevState == 2 and rxCurState == 2:
-                rxBit = 0
-                self.rxPrevState = 1
-            elif self.rxPrevState == 2 and rxCurState == 1:
-                rxBit = 1
-                self.rxPrevState = 3
-            elif self.rxPrevState == 1 and rxCurState == 3:
-                rxBit = 0
-                self.rxPrevState = 0
-            elif self.rxPrevState == 1 and rxCurState == 0:
-                rxBit = 1
-                self.rxPrevState = 2
-            elif self.rxPrevState == 3 and rxCurState == 1:
-                rxBit = 0
-                self.rxPrevState = 1
-            elif self.rxPrevState == 3 and rxCurState == 2:
-                rxBit = 1
-                self.rxPrevState = 3
+            prevRxBit = -1
+            if self.rxPrevState == 0:
+                if self.rxErrorDetect:
+                    if rxCurState == 0:
+                        rxBit = 0
+                        prevRxBit = 0
+                        self.rxPrevState = 0
+                    elif rxCurState == 1:
+                        rxBit = 1
+                        prevRxBit = 1
+                        self.rxPrevState = 3
+                    elif rxCurState == 2:
+                        rxBit = 0
+                        prevRxBit = 1
+                        self.rxPrevState = 1
+                    elif rxCurState == 3:
+                        rxBit = 1
+                        prevRxBit = 0
+                        self.rxPrevState = 2
+                elif rxCurState == 0:
+                    rxBit = 0
+                    self.rxPrevState = 0
+                elif rxCurState == 3:
+                    rxBit = 1
+                    self.rxPrevState = 2
+                else:
+                    self.rxErrorDetect = True
+                    return
+            elif self.rxPrevState == 2:
+                if self.rxErrorDetect:
+                    if rxCurState == 0:
+                        rxBit = 1
+                        prevRxBit = 0
+                        self.rxPrevState = 2
+                    elif rxCurState == 1:
+                        rxBit = 0
+                        prevRxBit = 1
+                        self.rxPrevState = 1
+                    elif rxCurState == 2:
+                        rxBit = 1
+                        prevRxBit = 1
+                        self.rxPrevState = 3
+                    elif rxCurState == 3:
+                        rxBit = 0
+                        prevRxBit = 0
+                        self.rxPrevState = 0
+                elif rxCurState == 2:
+                    rxBit = 0
+                    self.rxPrevState = 1
+                elif rxCurState == 1:
+                    rxBit = 1
+                    self.rxPrevState = 3
+                else:
+                    self.rxErrorDetect = True
+                    return
+            elif self.rxPrevState == 1:
+                if self.rxErrorDetect:
+                    if rxCurState == 0:
+                        rxBit = 0
+                        prevRxBit = 0
+                        self.rxPrevState = 0
+                    elif rxCurState == 1:
+                        rxBit = 1
+                        prevRxBit = 1
+                        self.rxPrevState = 3
+                    elif rxCurState == 2:
+                        rxBit = 0
+                        prevRxBit = 1
+                        self.rxPrevState = 1
+                    elif rxCurState == 3:
+                        rxBit = 1
+                        prevRxBit = 0
+                        self.rxPrevState = 2
+                elif rxCurState == 3:
+                    rxBit = 0
+                    self.rxPrevState = 0
+                elif rxCurState == 0:
+                    rxBit = 1
+                    self.rxPrevState = 2
+                else:
+                    self.rxErrorDetect = True
+                    return
+            elif self.rxPrevState == 3:
+                if self.rxErrorDetect:
+                    if rxCurState == 0:
+                        rxBit = 1
+                        prevRxBit = 0
+                        self.rxPrevState = 2
+                    elif rxCurState == 1:
+                        rxBit = 0
+                        prevRxBit = 1
+                        self.rxPrevState = 1
+                    elif rxCurState == 2:
+                        rxBit = 1
+                        prevRxBit = 1
+                        self.rxPrevState = 3
+                    elif rxCurState == 3:
+                        rxBit = 0
+                        prevRxBit = 0
+                        self.rxPrevState = 0
+                elif rxCurState == 1:
+                    rxBit = 0
+                    self.rxPrevState = 1
+                elif rxCurState == 2:
+                    rxBit = 1
+                    self.rxPrevState = 3
+                else:
+                    self.rxErrorDetect = True
+                    return
             else:
-                print 'RX Error'
+                self.rxErrorDetect = True
+                return
 
             # add to data payload
             if self.rxHeaderFound:
+                if self.rxErrorDetect:
+                    self.rxData[self.rxdataArrayOffset] |= prevRxBit << self.rxdataIntOffset
+                    self.rxdataIntOffset -= 1
+                    if self.rxdataIntOffset < 0:
+                        self.rxdataIntOffset = 31
+                        self.rxdataArrayOffset += 1
+                        self.rxData.append(0)
+                    self.rxdataLen += 1
+                    self.rxErrorDetect = False
                 self.rxData[self.rxdataArrayOffset] |= rxBit << self.rxdataIntOffset
                 self.rxdataIntOffset -= 1
                 if self.rxdataIntOffset < 0:
@@ -168,12 +265,22 @@ class Node:
                 self.rxdataLen += 1
             else:
                 # header search
+                if self.rxErrorDetect:
+                    if not (((self.rxHeaderMask & self.header) > 1) ^ (prevRxBit == 1)):  
+                        self.rxHeaderMask = self.rxHeaderMask >> 1
+                        if self.rxHeaderMask == 0:
+                            self.rxHeaderFound = True
+                    else:
+                        self.rxHeaderMask = 0x80000000
+                    self.rxErrorDetect = False
+
                 if not (((self.rxHeaderMask & self.header) > 1) ^ (rxBit == 1)):  
                     self.rxHeaderMask = self.rxHeaderMask >> 1
                     if self.rxHeaderMask == 0:
                         self.rxHeaderFound = True
+                        print 'Header Found\n'
                 else:
-                    self.rfHeaderMask = 31
+                    self.rxHeaderMask = 0x80000000
 
     # returns the next bit to transmit
     def getNextSymbol(self):
