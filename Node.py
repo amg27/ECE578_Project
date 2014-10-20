@@ -5,6 +5,7 @@ class Node:
 
     #The following function are for a switch case look up dictionary thing
     def TxData(self, msg):
+        self.timeStamp = msg.timeStamp
         txDataLoc = [self.header] + msg.data
         
         # encode with convolutional encoder
@@ -42,6 +43,7 @@ class Node:
         return TxDataMessage(self.txData, self.txdataLen)
 
     def Symbol(self, msg):
+        self.timeStamp = msg.timeStamp
         #Rx msg proccessing
         self.getNextRxBits(msg.symbol)
 
@@ -50,14 +52,17 @@ class Node:
 
 
     def Error(self, msg):
+        self.timeStamp = msg.timeStamp
         self.error = 1
         return self.error
 
     def RxData(self, msg):
-        return RxDataMessage(data=self.rxData,length=self.rxdataLen)
+        self.timeStamp = msg.timeStamp
+        return RxDataMessage(data=self.rxData,length=self.rxdataLen, ts=self.timeStamp)
 
 #todo: include rx status
     def Status(self, msg):
+        self.timeStamp = msg.timeStamp
         return StatusMessage([self.txdataLen, self.rxdataLen])
 
     # init fucntion       
@@ -91,7 +96,7 @@ class Node:
 
         self.txmask = txmask
         self.rxmask = rxmask
-        
+        seld.timeStamp = 0
         self.msgFunction = {1 : self.TxData,
                     2 : self.Symbol,
                     4 : self.Error,
