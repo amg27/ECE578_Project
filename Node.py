@@ -1,22 +1,54 @@
 from multiprocessing import Process, Pipe
 from MessageClass import * 
+import zlib
+import time
+import datetime
+import ctypes
+
+def int32(x):
+    x = 0xffffffff & x
+    if x > 0x7ffffff:
+        return -(~(x-1)&0xffffffff)
+    else:
+        return x
 
 class Node:
 
     #The following function are for a switch case look up dictionary thing
     def TxData(self, msg):
         self.timeStamp = msg.timeStamp
-        txDataLoc = [self.header] + msg.data
+        
+        # reformat data to chars
+        charData = [None]*4*len(msg.data)
+        index = 0
+        for ii in msg.data:
+            charData[index] = (ctypes.c_int(ii).value>>24)&0xff
+            charData[index+1] = (ctypes.c_int(ii).value>>16)&0xff
+            charData[index+2] = (ctypes.c_int(ii).value>>8)&0xff
+            charData[index+3] = ctypes.c_int(ii).value&0xff
+            index += 4
+        
+        # compure checksum
+        checkSum = zlib.crc32(''.join(chr(ii) for ii in charData) ,0xffff)
+        print '%x'%checkSum
+
+        txDataList = [self.header>>24, (self.header>>16)&0xff, (self.header>>8)&0xff,self.header&0xff] 
+        txDataList += charData  
+        txDataList.append((ctypes.c_int(checkSum).value>>24)&0xff)
+        txDataList.append((ctypes.c_int(checkSum).value>>16)&0xff)
+        txDataList.append((ctypes.c_int(checkSum).value>>8)&0xff)
+        txDataList.append(ctypes.c_int(checkSum).value&0xff)
+        print (txDataList)
         
         # encode with convolutional encoder
         d1 = False
         d2 = False
-        bitLoc = 0x80000000
-        intOff = 0
-        outBitLoc = 31
-        outIntOff = 0
-        for ii in range(0,msg.length + 32):
-            cb = txDataLoc[intOff] & bitLoc > 0
+        bitLoc = 0x80
+        charOff = 0
+        outBitLoc = 7
+        outCharOff = 0
+        for ii in range(0,len(txDataList)*8):
+            cb = txDataList[charOff] & bitLoc > 0
             b0 = d1 ^ d2 ^ cb
             b1 = d2 ^ cb
 
@@ -25,20 +57,20 @@ class Node:
 
             bitLoc = bitLoc >> 1;
             if bitLoc == 0:
-                bitLoc = 0x80000000
-                intOff += 1
+                bitLoc = 0x80
+                charOff += 1
             
-            self.txData[outIntOff] |= (1 if b0 else 0) << outBitLoc
+            self.txData[outCharOff] |= (1 if b0 else 0) << outBitLoc
             outBitLoc -= 1
-            self.txData[outIntOff] |= (1 if b1 else 0) << outBitLoc
+            self.txData[outCharOff] |= (1 if b1 else 0) << outBitLoc
             outBitLoc -= 1
             if outBitLoc == -1:
-                outBitLoc = 31
-                outIntOff += 1
+                outBitLoc = 7 
+                outCharOff += 1
                 self.txData.append(0)
         # setup transmit params
-        self.txdataLen = (outIntOff + 1) * 32 # for the header 
-        self.txdataIntOffset = 31
+        self.txdataLen = (outCharOff + 1) * 8 # for the header 
+        self.txdataIntOffset = 7
         self.txdataArrayOffset = 0
         return TxDataMessage(self.txData, self.txdataLen)
 
@@ -58,23 +90,30 @@ class Node:
 
     def RxData(self, msg):
         self.timeStamp = msg.timeStamp
-        return RxDataMessage(data=self.rxData,length=self.rxdataLen, ts=self.timeStamp)
+        return RxDataMessage(data=self.rxData,length=self.rxdataLen, ts=self.timeStamp, parity = zlib.crc32(self.rsData,'0xffffffff'))
 
 #todo: include rx status
     def Status(self, msg):
         self.timeStamp = msg.timeStamp
         return StatusMessage([self.txdataLen, self.rxdataLen])
 
+    def openFile(self):
+        timeText = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%M%D_%H%M%S')
+        filename = timeText+'_'+self.name
+        print filename
+
     # init fucntion       
     # mask[] is the index in the symbol array
     # mask[0] is 1 then data is 0
     # mask[1] is 1 then data is 1
     # header in 13bit barker code then link id then 11 bit barker code
-    def __init__(self,seed=1,txmask = [0,1], rxmask = [16,17], header=0xf9a80712):
+    def __init__(self,name='New',seed=1,txmask = [0,1], rxmask = [16,17], header=0xf9a80712):
         self.seed = seed
         self.curSymbol = 0
         self.header = header
         
+        self.name = name
+
         # Tx Variables
         self.txData = [0]
         self.txdataLen = 0
@@ -96,7 +135,7 @@ class Node:
 
         self.txmask = txmask
         self.rxmask = rxmask
-        seld.timeStamp = 0
+        self.timeStamp = 0
         self.msgFunction = {1 : self.TxData,
                     2 : self.Symbol,
                     4 : self.Error,
@@ -320,7 +359,10 @@ class Node:
 
 if __name__ == "__main__":
     txn = Node()
-    txn.msgFunction[1](TxDataMessage([0xa50fa50f],32))
+    b = [0xa50fa50f]
+    print type(b[0])
+    a = txn.msgFunction[1](TxDataMessage([0xa50fa50f],32))
+    a.txData
 # header    
     txn.getNextRxBits([0x0004000])
     txn.getNextRxBits([0x0004000])
