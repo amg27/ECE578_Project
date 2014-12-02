@@ -21,6 +21,9 @@ class StatusMessage():
         self.status = status
         self.timeStamp = ts
 
+class RQRxDataMessage():
+    def __init__(self):
+        self.ty = 5
 
 class SymbolMessage():
     def __init__(self,symbol, ts=0):
@@ -28,6 +31,10 @@ class SymbolMessage():
         self.symbol = symbol
         self.timeStamp = ts
 
+
+class CloseMessage():
+    def __init__(self):
+        self.ty = 7
 
 
 if __name__ == "__main__":
