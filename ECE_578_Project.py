@@ -116,7 +116,7 @@ if __name__ == '__main__':
             tx1StatusMsg = ptx1_conn.recv()
             countLoops += 1
             #if tx1StatusMsg.status == 0 or countLoops == 20:
-            if countLoops == 100:
+            if countLoops == 340:
                 ndone = 0
         else:
             ndone = 0

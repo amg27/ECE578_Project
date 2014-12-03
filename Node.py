@@ -13,7 +13,8 @@ class Node:
         self.timeStamp = msg.timeStamp
         
         # reformat data to chars
-        charData = [None]*len(msg.data)
+        txBitLength = len(msg.data)
+        charData = [None]*txBitLength
         index = 0
         for ii in msg.data:
    #         charData[index] = (ctypes.c_int(ii).value>>24)&0xff
@@ -29,6 +30,7 @@ class Node:
 
         # append checksum to transmit list
         txDataList = [self.header>>24, (self.header>>16)&0xff, (self.header>>8)&0xff,self.header&0xff] 
+        txDataList += [txBitLength>>24, (txBitLength>>16)&0xff, (txBitLength>>8)&0xff,txBitLength&0xff]
         txDataList += charData  
         txDataList.append((ctypes.c_int(checkSum).value>>24)&0xff)
         txDataList.append((ctypes.c_int(checkSum).value>>16)&0xff)
@@ -94,6 +96,11 @@ class Node:
         return StatusMessage([self.txdataLen, self.rxdataLen])
 
     def Close(self, msg):
+        # Dump RX Buffer
+        self.fid.write('RX Buffer Rx len:%i\n'%self.rxBitLength)
+        self.fid.write('RX len:%i\n'%self.rxdataLen)
+        for ii in self.rxData:
+            self.fid.write('%x\n'%ii)
         self.fid.write('file closed\n')
         self.fid.close()
 
@@ -126,15 +133,22 @@ class Node:
 
         # Receive Variables
         self.rxData = [0]
-        self.rxdataIntOffset = 31
+        self.rxdataIntOffset = 7
         self.rxdataArrayOffset = 0
         self.rxdataLen = 0
+        self.rxMsgFound = False
         self.rxHeaderFound = False
         self.rxBuffer = 0
         self.rxBufferBit = True
         self.rxPrevState = 0
         self.rxHeaderMask = 0x80000000
         self.rxErrorDetect = False
+        self.rxBitLengthMask = 31
+        self.rxBitLength = 0
+        self.rxMsgLengthFound = False
+        self.rxChecksumMask = 31
+        self.rxChecksum = 0;
+        self.rxChecksumFound = False
 
 
         self.txmask = txmask
@@ -301,22 +315,44 @@ class Node:
 
             # add to data payload
             if self.rxHeaderFound:
-                if self.rxErrorDetect:
-                    self.rxData[self.rxdataArrayOffset] |= prevRxBit << self.rxdataIntOffset
+                # num bits search
+                if self.rxMsgLengthFound:
+                    if self.rxErrorDetect:
+                        self.rxData[self.rxdataArrayOffset] |= prevRxBit << self.rxdataIntOffset
+                        self.rxdataIntOffset -= 1
+                        if self.rxdataIntOffset < 0:
+                            self.rxdataIntOffset = 7
+                            self.rxdataArrayOffset += 1
+                            self.rxData.append(0)
+                        self.rxdataLen += 1
+                        self.rxErrorDetect = False
+                    self.rxData[self.rxdataArrayOffset] |= rxBit << self.rxdataIntOffset
                     self.rxdataIntOffset -= 1
                     if self.rxdataIntOffset < 0:
                         self.rxdataIntOffset = 7
                         self.rxdataArrayOffset += 1
                         self.rxData.append(0)
                     self.rxdataLen += 1
-                    self.rxErrorDetect = False
-                self.rxData[self.rxdataArrayOffset] |= rxBit << self.rxdataIntOffset
-                self.rxdataIntOffset -= 1
-                if self.rxdataIntOffset < 0:
-                    self.rxdataIntOffset = 7
-                    self.rxdataArrayOffset += 1
-                    self.rxData.append(0)
-                self.rxdataLen += 1
+                else: # collect bits for rx msg length 
+                    if self.rxErrorDetect:
+                        self.rxBitLength |= prevRxBit << self.rxBitLengthMask
+                        self.rxBitLengthMask -= 1
+                        if self.rxBitLengthMask < 0:
+                            self.rxMsgLengthFound = True
+                            self.fid.write('RX Length found: %i\n'%self.rxBitLength)
+                            self.rxBitLength *=8
+                        self.rxErrorDetect = False
+                    if self.rxMsgLengthFound:# in case prev bit was the last bit of the length
+                        self.rxData[self.rxdataArrayOffset] |= rxBit << self.rxdataIntOffset
+                        self.rxdataIntOffset -= 1
+                        self.rxdataLen += 1
+                    else:
+                        self.rxBitLength |= rxBit << self.rxBitLengthMask
+                        self.rxBitLengthMask -= 1
+                        if self.rxBitLengthMask < 0:
+                            self.rxMsgLengthFound = True
+                            self.fid.write('RX Length found: %i\n'%self.rxBitLength)
+                            self.rxBitLength *=8
             else:
                 # header search
                 if self.rxErrorDetect:
@@ -339,6 +375,8 @@ class Node:
                 else:
                     self.rxHeaderMask = 0x80000000 
                     self.fid.write('Header Rejected\n')
+
+#    def HandleRxBit(self,curBit):
 
     # returns the next bit to transmit
     def getNextSymbol(self):
