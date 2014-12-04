@@ -1,9 +1,8 @@
 # carries data to be transmitted without delay
 class TxDataMessage():
-    def __init__(self,data=0,length=0, ts=0):
+    def __init__(self,data=0, ts=0):
         self.ty = 1
         self.data = data
-        self.length = length
         self.timeStamp = ts
 
 # Carries data received by the node, only after rx data is received 

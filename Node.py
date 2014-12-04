@@ -21,18 +21,17 @@ class Node:
             index += 1
         
         # compure checksum
-        checkSum = zlib.crc32(''.join(chr(ii) for ii in charData) ,0xffff)
-#        print '%x'%checkSum
-        self.fid.write('TX Checksum: %x\n'%checkSum)
+        self.txChecksum = zlib.crc32(''.join(chr(ii) for ii in charData) ,0xffff)
+        self.fid.write('TX Checksum: %x\n'%self.txChecksum)
 
         # append checksum to transmit list
         txDataList = [self.header>>24, (self.header>>16)&0xff, (self.header>>8)&0xff,self.header&0xff] 
         txDataList += [txBitLength>>24, (txBitLength>>16)&0xff, (txBitLength>>8)&0xff,txBitLength&0xff]
         txDataList += charData  
-        txDataList.append((ctypes.c_int(checkSum).value>>24)&0xff)
-        txDataList.append((ctypes.c_int(checkSum).value>>16)&0xff)
-        txDataList.append((ctypes.c_int(checkSum).value>>8)&0xff)
-        txDataList.append(ctypes.c_int(checkSum).value&0xff)
+        txDataList.append((ctypes.c_int(self.txChecksum).value>>24)&0xff)
+        txDataList.append((ctypes.c_int(self.txChecksum).value>>16)&0xff)
+        txDataList.append((ctypes.c_int(self.txChecksum).value>>8)&0xff)
+        txDataList.append(ctypes.c_int(self.txChecksum).value&0xff)
 #        print (txDataList)
         
         # encode with convolutional encoder
@@ -106,6 +105,7 @@ class Node:
         filename = timeText+'_'+self.name
         #print filename
         self.fid = open(filename, 'w')
+        self.fid.write('file-opened\n')
 
     # init fucntion       
     # mask[] is the index in the symbol array
@@ -120,13 +120,13 @@ class Node:
         self.name = name
         self.fid = -1
         self.openFile()
-        self.fid.write('file opened\n')
 
         # Tx Variables
         self.txData = [0]
         self.txdataLen = 0
         self.txdataIntOffset = 7
         self.txdataArrayOffset = 0
+        self.txChecksum = 0
 
         # Receive Variables
         self.rxData = [0]
@@ -151,20 +151,29 @@ class Node:
         self.txmask = txmask
         self.rxmask = rxmask
         self.timeStamp = 0
-        self.msgFunction = {1 : self.TxData,
-                    2 : self.Symbol,
-                    4 : self.Error,
-                    5 : self.RxData,
-                    6 : self.Status,
-                    7 : self.Close
-                    }
 
     # main running function    
     def runNode(self,conn):
         while conn.poll(2):
             incMsg = conn.recv()
-           # self.fid.write('rx msg:%i\n'%incMsg.ty)
-            conn.send(self.msgFunction[incMsg.ty](incMsg))
+            #self.fid.write('rx msg:%i\n'%incMsg.ty)
+            retMsg = None
+            if incMsg.ty == 1:
+                retMsg = self.TxData(incMsg)
+            elif incMsg.ty == 2:
+                retMsg = self.Symbol(incMsg)
+            elif incMsg.ty == 3:
+                retMsg = None
+            elif incMsg.ty == 4:
+                retMsg = self.Error(incMsg)
+            elif incMsg.ty == 5:
+                retMsg = self.RxData(incMsg)
+            elif incMsg.ty == 6:
+                retMsg = self.Status(incMsg)
+            elif incMsg.ty == 7:
+                retMsg = self.Close(incMsg)
+
+            conn.send(retMsg)
         conn.close()
 
 
@@ -306,17 +315,16 @@ class Node:
                 self.rxErrorDetect = True
                 return
 
-            if self.rxErrorDetect:
+            if self.rxErrorDetect and not self.rxChecksumFound:
                 self.fid.write('Error Detected at %i\n'%self.timeStamp)
-                self.fid.write('Prev RX Bit:%x\n'%rxBit)
                 self.HandleRxBit(prevRxBit)
-            self.fid.write('RX Bit:%x\n'%rxBit)
             self.HandleRxBit(rxBit)
             return
 
     def HandleRxBit(self,curBit):
         # Synch Pattern Search
         if not self.rxHeaderFound:
+            self.fid.write('Header Bit:%x\n'%curBit)
             if not (((self.rxHeaderMask & self.header) > 1) ^ (curBit == 1)):  
                 self.rxHeaderMask = self.rxHeaderMask >> 1
                 if self.rxHeaderMask == 0:
@@ -327,7 +335,8 @@ class Node:
                 self.rxHeaderMask = 0x80000000 
                 self.fid.write('Header Rejected\n')
             return
-        if not self.rxMsgLengthFound:
+        elif not self.rxMsgLengthFound:
+            self.fid.write('Bit Len Bit:%x\n'%curBit)
             self.rxBitLength |= curBit << self.rxBitLengthMask
             self.rxBitLengthMask -= 1
             if self.rxBitLengthMask < 0:
@@ -335,7 +344,8 @@ class Node:
                 self.fid.write('RX Length found: %i\n'%self.rxBitLength)
                 self.rxBitLength *=8
             return
-        if not self.rxMsgFound:
+        elif not self.rxMsgFound:
+            self.fid.write('Msg Bit:%x\n'%curBit)
             self.rxData[self.rxdataArrayOffset] |= curBit << self.rxdataIntOffset
             self.rxdataIntOffset -= 1
             if self.rxdataIntOffset < 0:
@@ -347,7 +357,8 @@ class Node:
                 self.rxMsgFound = True
                 self.fid.write('RX Message Found\n')
             return
-        if not self.rxChecksumFound:
+        elif not self.rxChecksumFound:
+            self.fid.write('Checksum Bit:%x\n'%curBit)
             self.rxChecksum  |= curBit << self.rxChecksumMask 
             self.rxChecksumMask -= 1
             if self.rxChecksumMask < 0:
