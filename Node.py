@@ -17,16 +17,13 @@ class Node:
         charData = [None]*txBitLength
         index = 0
         for ii in msg.data:
-   #         charData[index] = (ctypes.c_int(ii).value>>24)&0xff
-    #        charData[index+1] = (ctypes.c_int(ii).value>>16)&0xff
-    #        charData[index+2] = (ctypes.c_int(ii).value>>8)&0xff
             charData[index] = ctypes.c_int(ii).value&0xff
             index += 1
         
         # compure checksum
         checkSum = zlib.crc32(''.join(chr(ii) for ii in charData) ,0xffff)
 #        print '%x'%checkSum
-
+        self.fid.write('TX Checksum: %x\n'%checkSum)
 
         # append checksum to transmit list
         txDataList = [self.header>>24, (self.header>>16)&0xff, (self.header>>8)&0xff,self.header&0xff] 
@@ -166,7 +163,7 @@ class Node:
     def runNode(self,conn):
         while conn.poll(2):
             incMsg = conn.recv()
-            self.fid.write('rx msg:%i\n'%incMsg.ty)
+           # self.fid.write('rx msg:%i\n'%incMsg.ty)
             conn.send(self.msgFunction[incMsg.ty](incMsg))
         conn.close()
 
@@ -311,72 +308,53 @@ class Node:
 
             if self.rxErrorDetect:
                 self.fid.write('Error Detected at %i\n'%self.timeStamp)
+                self.fid.write('Prev RX Bit:%x\n'%rxBit)
+                self.HandleRxBit(prevRxBit)
             self.fid.write('RX Bit:%x\n'%rxBit)
+            self.HandleRxBit(rxBit)
+            return
 
-            # add to data payload
-            if self.rxHeaderFound:
-                # num bits search
-                if self.rxMsgLengthFound:
-                    if self.rxErrorDetect:
-                        self.rxData[self.rxdataArrayOffset] |= prevRxBit << self.rxdataIntOffset
-                        self.rxdataIntOffset -= 1
-                        if self.rxdataIntOffset < 0:
-                            self.rxdataIntOffset = 7
-                            self.rxdataArrayOffset += 1
-                            self.rxData.append(0)
-                        self.rxdataLen += 1
-                        self.rxErrorDetect = False
-                    self.rxData[self.rxdataArrayOffset] |= rxBit << self.rxdataIntOffset
-                    self.rxdataIntOffset -= 1
-                    if self.rxdataIntOffset < 0:
-                        self.rxdataIntOffset = 7
-                        self.rxdataArrayOffset += 1
-                        self.rxData.append(0)
-                    self.rxdataLen += 1
-                else: # collect bits for rx msg length 
-                    if self.rxErrorDetect:
-                        self.rxBitLength |= prevRxBit << self.rxBitLengthMask
-                        self.rxBitLengthMask -= 1
-                        if self.rxBitLengthMask < 0:
-                            self.rxMsgLengthFound = True
-                            self.fid.write('RX Length found: %i\n'%self.rxBitLength)
-                            self.rxBitLength *=8
-                        self.rxErrorDetect = False
-                    if self.rxMsgLengthFound:# in case prev bit was the last bit of the length
-                        self.rxData[self.rxdataArrayOffset] |= rxBit << self.rxdataIntOffset
-                        self.rxdataIntOffset -= 1
-                        self.rxdataLen += 1
-                    else:
-                        self.rxBitLength |= rxBit << self.rxBitLengthMask
-                        self.rxBitLengthMask -= 1
-                        if self.rxBitLengthMask < 0:
-                            self.rxMsgLengthFound = True
-                            self.fid.write('RX Length found: %i\n'%self.rxBitLength)
-                            self.rxBitLength *=8
+    def HandleRxBit(self,curBit):
+        # Synch Pattern Search
+        if not self.rxHeaderFound:
+            if not (((self.rxHeaderMask & self.header) > 1) ^ (curBit == 1)):  
+                self.rxHeaderMask = self.rxHeaderMask >> 1
+                if self.rxHeaderMask == 0:
+                    self.rxHeaderFound = True
+                    #print 'Header Found\n'
+                    self.fid.write('Header Found\n')
             else:
-                # header search
-                if self.rxErrorDetect:
-                    if not (((self.rxHeaderMask & self.header) > 1) ^ (prevRxBit == 1)):  
-                        self.rxHeaderMask = self.rxHeaderMask >> 1
-                        if self.rxHeaderMask == 0:
-                            self.rxHeaderFound = True
-                            self.fid.write('Header Found\n')
-                    else:
-                        self.rxHeaderMask = 0x80000000
-                        self.fid.write('Header Rejected\n')
-                    self.rxErrorDetect = False
-
-                if not (((self.rxHeaderMask & self.header) > 1) ^ (rxBit == 1)):  
-                    self.rxHeaderMask = self.rxHeaderMask >> 1
-                    if self.rxHeaderMask == 0:
-                        self.rxHeaderFound = True
-                        #print 'Header Found\n'
-                        self.fid.write('Header Found\n')
-                else:
-                    self.rxHeaderMask = 0x80000000 
-                    self.fid.write('Header Rejected\n')
-
-#    def HandleRxBit(self,curBit):
+                self.rxHeaderMask = 0x80000000 
+                self.fid.write('Header Rejected\n')
+            return
+        if not self.rxMsgLengthFound:
+            self.rxBitLength |= curBit << self.rxBitLengthMask
+            self.rxBitLengthMask -= 1
+            if self.rxBitLengthMask < 0:
+                self.rxMsgLengthFound = True
+                self.fid.write('RX Length found: %i\n'%self.rxBitLength)
+                self.rxBitLength *=8
+            return
+        if not self.rxMsgFound:
+            self.rxData[self.rxdataArrayOffset] |= curBit << self.rxdataIntOffset
+            self.rxdataIntOffset -= 1
+            if self.rxdataIntOffset < 0:
+                self.rxdataIntOffset = 7
+                self.rxdataArrayOffset += 1
+                self.rxData.append(0)
+            self.rxdataLen += 1
+            if self.rxBitLength == self.rxdataLen:
+                self.rxMsgFound = True
+                self.fid.write('RX Message Found\n')
+            return
+        if not self.rxChecksumFound:
+            self.rxChecksum  |= curBit << self.rxChecksumMask 
+            self.rxChecksumMask -= 1
+            if self.rxChecksumMask < 0:
+                self.rxChecksumFound = True
+                self.fid.write('Checksum found: %x\n'%self.rxChecksum)
+            return
+        return
 
     # returns the next bit to transmit
     def getNextSymbol(self):
