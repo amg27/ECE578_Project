@@ -5,9 +5,12 @@ import time
 import datetime
 import ctypes
 
+def twos_comp(val,bits):
+    if val < 0:
+        val = val + 4294967296 
+    return val
 
 class Node:
-
     #The following function are for a switch case look up dictionary thing
     def TxData(self, msg):
         self.timeStamp = msg.timeStamp
@@ -22,6 +25,9 @@ class Node:
         
         # compure checksum
         self.txChecksum = zlib.crc32(''.join(chr(ii) for ii in charData) ,0xffff)
+        self.fid.write('TX Checksum: %x\n'%self.txChecksum)
+        if self.txChecksum < 0:
+            self.txChecksum = twos_comp(self.txChecksum,32)
         self.fid.write('TX Checksum: %x\n'%self.txChecksum)
 
         # append checksum to transmit list
@@ -66,7 +72,7 @@ class Node:
         self.txdataLen = (outCharOff + 1) * 8 # for the header 
         self.txdataIntOffset = 7
         self.txdataArrayOffset = 0
-        return TxDataMessage(self.txData, self.txdataLen)
+        return TxDataMessage(self.txData,self.timeStamp, self.txChecksum)
 
     def Symbol(self, msg):
         self.timeStamp = msg.timeStamp
@@ -89,7 +95,7 @@ class Node:
 #todo: include rx status
     def Status(self, msg):
         self.timeStamp = msg.timeStamp
-        return StatusMessage([self.txdataLen, self.rxdataLen])
+        return StatusMessage([self.txdataLen, self.rxdataLen, self.txChecksum, self.rxChecksum])
 
     def Close(self, msg):
         # Dump RX Buffer
@@ -107,13 +113,31 @@ class Node:
         self.fid = open(filename, 'w')
         self.fid.write('file-opened\n')
 
+    def GetNextChannel(self):
+        self.rxmask = self.txmask;
+        self.seed = (self.randA * self.seed + self.randB) % self.randC
+        self.txmask[0] = self.seed >> 11
+        self.seed = (self.randA * self.seed + self.randB) % self.randC
+        self.txmask[1] = self.seed >> 11
+        if self.txmask[0] == self.txmask[1]:
+            self.seed = (self.randA * self.seed + self.randB) % self.randC
+            self.txmask[1] = self.seed >> 11
+
+
     # init fucntion       
     # mask[] is the index in the symbol array
     # mask[0] is 1 then data is 0
     # mask[1] is 1 then data is 1
     # header in 13bit barker code then link id then 11 bit barker code
-    def __init__(self,name='New',seed=1,txmask = [0,1], rxmask = [16,17], header=0xf9a80712):
+    def __init__(self,name='New',seed=1, header=0xf9a80712):
         self.seed = seed
+        self.randA = 3527
+        self.randB = 3541
+        self.randC = 65536
+        self.txmask = [0,0] 
+        self.rxmask = [0,0]
+        self.GetNextChannel()# set txmask
+
         self.curSymbol = 0
         self.header = header
         
@@ -127,7 +151,7 @@ class Node:
         self.txdataIntOffset = 7
         self.txdataArrayOffset = 0
         self.txChecksum = 0
-
+        self.fid.write('------------------------------tx checksum set to 0 -----------------')
         # Receive Variables
         self.rxData = [0]
         self.rxdataIntOffset = 7
@@ -148,8 +172,6 @@ class Node:
         self.rxChecksumFound = False
 
 
-        self.txmask = txmask
-        self.rxmask = rxmask
         self.timeStamp = 0
 
     # main running function    
@@ -400,12 +422,25 @@ class Node:
 
 if __name__ == "__main__":
     txn = Node()
-    b = [0xa50fa50f]
-    print type(b[0])
-    a = txn.msgFunction[1](TxDataMessage([0xa5, 0x0f, 0xa5, 0x0f],4*8))
-    print 'this is the start'
-    for ii in a.data:
-        print '%x'%ii
+    
+    txn.GetNextChannel()
+    print txn.txmask
+    txn.GetNextChannel()
+    print txn.txmask
+    txn.GetNextChannel()
+    print txn.txmask
+    txn.GetNextChannel()
+    print txn.txmask
+
+#    b = [0xa50fa50f]
+#    print type(b[0])
+    a = txn.TxData(TxDataMessage([0xa5, 0x0f, 0xa5, 0x0f],4*8))
+    print '%x'%txn.txChecksum
+#    for ii in a.data:
+#        print '%x'%ii
+
+    
+'''        
 # header    
     txn.getNextRxBits([0x0004000])
     txn.getNextRxBits([0x0004000])
@@ -589,3 +624,4 @@ if __name__ == "__main__":
 #   print '%x'%txn.getNextSymbol()
 #   print '%x'%txn.getNextSymbol()
 #   print ' ' 
+'''

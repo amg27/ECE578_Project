@@ -2,6 +2,7 @@ from multiprocessing import Process, Pipe
 from controller import runControl 
 from MessageClass import * 
 from Node import Node
+import random
 
 
 class NodePair:
@@ -16,14 +17,32 @@ class NodePair:
         self.prx.start()
 
     def CompareResults(self):
-        if self.txNode.txChecksum == self.rxNode.rxChecksum:
-            return True
+        self.ptx_conn.send(StatusMessage())
+        self.prx_conn.send(StatusMessage())
+        passedA = False
+        passedB = False
+        if self.ptx_conn.poll(1):
+            a = self.ptx_conn.recv()#clear buffer
+            print '%s checksum %x'%(self.txNode.name, a.status[2])
+            passedA = True
+        if self.prx_conn.poll(1):
+            b = self.prx_conn.recv()#clear buffer
+            print '%s checksum %x'%(self.rxNode.name, a.status[3])
+            passedB = True
+        if passedB and passedA:
+            if a.status[2] == b.status[3]:
+                return True
+            else:
+                return False
         else:
-            return False
+            print 'error found'
+
     def GetDisplayName(self):
         return self.txNode.name + ' to ' + self.rxNode.name
 
     def StopNodePair(self):
+        self.ptx_conn.send(CloseMessage())
+        self.prx_conn.send(CloseMessage())
         self.ptx.join()
         self.ptx_conn.close()
         self.tx_conn.close()
@@ -35,7 +54,9 @@ class NodePair:
 
     def SetTranmitData(self,txData):
         self.ptx_conn.send(TxDataMessage(txData))
-        self.ptx_conn.recv()#clear buffer
+        if self.ptx_conn.poll(2):
+            a = self.ptx_conn.recv()#clear buffer
+            print 'inside checksum %x'%a.checksum
  
 if __name__ == '__main__':
 
@@ -44,18 +65,37 @@ if __name__ == '__main__':
     rc = runControl(5)
     
     # link number 1
-    nodePairs.append(NodePair(Node(seed=1,name='tx1',txmask=[0,1],rxmask=[16,17],header=0xf9a80f12),
-                              Node(seed=1,name='rx1',rxmask=[0,1],txmask=[16,17],header=0xf9a80f12))) 
-    nodePairs.append(NodePair(Node(seed=1,name='tx2',txmask=[2,3],rxmask=[4,5],header=0xf9a81f12),
-                              Node(seed=1,name='rx2',rxmask=[2,3],txmask=[4,5],header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=1,name='tx1',header=0xf9a80f12),
+                              Node(seed=1,name='rx1',header=0xf9a80f12))) 
+    nodePairs.append(NodePair(Node(seed=2,name='tx2',header=0xf9a81f12),
+                              Node(seed=2,name='rx2',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=3,name='tx3',header=0xf9a81f12),
+                              Node(seed=3,name='rx3',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=4,name='tx4',header=0xf9a81f12),
+                              Node(seed=4,name='rx4',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=5,name='tx5',header=0xf9a81f12),
+                              Node(seed=5,name='rx5',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=6,name='tx6',header=0xf9a81f12),
+                              Node(seed=6,name='rx6',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=7,name='tx7',header=0xf9a81f12),
+                              Node(seed=7,name='rx7',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=8,name='tx8',header=0xf9a81f12),
+                              Node(seed=8,name='rx8',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=9,name='tx9',header=0xf9a81f12),
+                              Node(seed=9,name='rx9',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=10,name='tx10',header=0xf9a81f12),
+                              Node(seed=10,name='rx10',header=0xf9a81f12))) 
     for np in nodePairs:
         clientPool.append(np.ptx_conn) 
         clientPool.append(np.prx_conn)
     print len(clientPool)
 
 # set Transmit  Data 
-    nodePairs[0].SetTranmitData([0xa5,0x0f,0xa5,0x0f])
-    nodePairs[1].SetTranmitData([0xa5,0x0f,0xa5,0x0f,0xa5,0x0f,0xa5,0x0f])
+    for np in nodePairs:
+        payload = 4*[None]
+        for ii in range(4):
+            payload[ii] = random.randrange(0,255)
+        np.SetTranmitData(payload)
     
     nextSymbol = [0]
     ndone = True
@@ -82,14 +122,12 @@ if __name__ == '__main__':
 
         curTS += 1
         countLoops += 1
-        if countLoops >= 340:
+        if countLoops >= 1340:
             ndone = False
     # end of while loop
 
-    for con in clientPool:
-        con.send(CloseMessage())
    
     # report and kill node pairs
     for np in nodePairs:
-        print '%s :%s\n'%(np.GetDisplayName(),'Passed' if np.CompareResults() else 'Failed')
+        print '%s :%s'%(np.GetDisplayName(),'Passed' if np.CompareResults() else 'Failed')
         np.StopNodePair()

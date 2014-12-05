@@ -1,9 +1,10 @@
 # carries data to be transmitted without delay
 class TxDataMessage():
-    def __init__(self,data=0, ts=0):
+    def __init__(self,data=0, ts=0,cs=0):
         self.ty = 1
         self.data = data
         self.timeStamp = ts
+        self.checksum = cs
 
 # Carries data received by the node, only after rx data is received 
 class RxDataMessage():
@@ -15,7 +16,7 @@ class RxDataMessage():
         self.checksum = cs # 0 = pass
 
 class StatusMessage():
-    def __init__(self, status, ts=0):
+    def __init__(self, status=0, ts=0):
         self.ty = 6
         self.status = status
         self.timeStamp = ts
