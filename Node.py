@@ -77,12 +77,14 @@ class Node:
     def Symbol(self, msg):
         self.timeStamp = msg.timeStamp
         #Rx msg proccessing
+        self.GetNextChannel()
+#       self.fid.write('rxSymbol %x\trxmask: %i\ttxmask: %i\n'%(msg.symbol[0],self.rxmask,self.txmask))
         if not self.timeStamp == 0:
             self.getNextRxBits(msg.symbol)
 
         # send next tx bit
-        return SymbolMessage(self.getNextSymbol())
-
+        nmsg = SymbolMessage(self.getNextSymbol())
+        return nmsg
 
     def Error(self, msg):
         self.timeStamp = msg.timeStamp
@@ -95,7 +97,7 @@ class Node:
 #todo: include rx status
     def Status(self, msg):
         self.timeStamp = msg.timeStamp
-        return StatusMessage([self.txdataLen, self.rxdataLen, self.txChecksum, self.rxChecksum])
+        return StatusMessage([self.txdataLen, self.rxdataLen, self.txChecksum, self.rxChecksum, self.rxChecksumCalc])
 
     def Close(self, msg):
         # Dump RX Buffer
@@ -114,14 +116,14 @@ class Node:
         self.fid.write('file-opened\n')
 
     def GetNextChannel(self):
-        self.rxmask = self.txmask;
-        self.seed = (self.randA * self.seed + self.randB) % self.randC
-        self.txmask[0] = self.seed >> 11
-        self.seed = (self.randA * self.seed + self.randB) % self.randC
-        self.txmask[1] = self.seed >> 11
-        if self.txmask[0] == self.txmask[1]:
+        if self.ss:
+            self.rxmask = self.txmask
+            self.rxmask = self.txmask
             self.seed = (self.randA * self.seed + self.randB) % self.randC
-            self.txmask[1] = self.seed >> 11
+            self.txmask = self.seed >> 11
+        else:
+            self.rxmask = 0
+            self.txmask = 0
 
 
     # init fucntion       
@@ -129,13 +131,15 @@ class Node:
     # mask[0] is 1 then data is 0
     # mask[1] is 1 then data is 1
     # header in 13bit barker code then link id then 11 bit barker code
-    def __init__(self,name='New',seed=1, header=0xf9a80712):
+    def __init__(self,name='New',seed=1, header=0xf9a80712,ss = False, rtType = 0):
         self.seed = seed
+        self.ss = ss
         self.randA = 3527
         self.randB = 3541
         self.randC = 65536
-        self.txmask = [0,0] 
-        self.rxmask = [0,0]
+        self.typeRxTx = rtType # 0 = rx node 1 = txnode
+        self.txmask = 0
+        self.rxmask = 0
         self.GetNextChannel()# set txmask
 
         self.curSymbol = 0
@@ -169,6 +173,7 @@ class Node:
         self.rxMsgLengthFound = False
         self.rxChecksumMask = 31
         self.rxChecksum = 0;
+        self.rxChecksumCalc = 0;
         self.rxChecksumFound = False
 
 
@@ -201,13 +206,10 @@ class Node:
 
     # receive next 2 bits 
     def getNextRxBits(self, symbol):
-        s0Mask = 0x80000000 >> self.rxmask[0]
-        s1Mask = 0x80000000 >> self.rxmask[1]
-        
+        mask = 0x80000000 >> self.rxmask
+#       self.fid.write('mask %x\n'%mask)
         # fix this if longer symbols are used
-        if s0Mask & symbol[0] >= 1:
-            curBit = 0
-        elif s1Mask & symbol[0] >= 1:
+        if mask & symbol[0] >= 1:
             curBit = 1
         else:
             curBit = 0
@@ -370,14 +372,17 @@ class Node:
             self.fid.write('Msg Bit:%x\n'%curBit)
             self.rxData[self.rxdataArrayOffset] |= curBit << self.rxdataIntOffset
             self.rxdataIntOffset -= 1
+            self.rxdataLen += 1
+            if self.rxBitLength == self.rxdataLen: # end msg and create checksum if msg found
+                self.rxMsgFound = True
+                self.rxChecksumCalc = zlib.crc32(''.join(chr(ii) for ii in self.rxData) ,0xffff)
+                if self.rxChecksumCalc < 0:
+                    self.rxChecksumCalc = twos_comp(self.rxChecksumCalc,32)
+                self.fid.write('RX Message Found with checksum %x\n'%self.rxChecksumCalc)
             if self.rxdataIntOffset < 0:
                 self.rxdataIntOffset = 7
                 self.rxdataArrayOffset += 1
                 self.rxData.append(0)
-            self.rxdataLen += 1
-            if self.rxBitLength == self.rxdataLen:
-                self.rxMsgFound = True
-                self.fid.write('RX Message Found\n')
             return
         elif not self.rxChecksumFound:
             self.fid.write('Checksum Bit:%x\n'%curBit)
@@ -391,7 +396,7 @@ class Node:
 
     # returns the next bit to transmit
     def getNextSymbol(self):
-        nextBit = -1
+        nextBit = False
 
         if self.txdataLen > 0:
             # get next mask
@@ -399,7 +404,8 @@ class Node:
             self.txdataIntOffset -= 1
 
             # get next bit
-            nextBit = 1 if bitMask & self.txData[self.txdataArrayOffset] > 0 else 0
+            nextBit = True if bitMask & self.txData[self.txdataArrayOffset] > 0 else False
+#           self.fid.write('bitmask %x\ttxdata: %x\tnextBit: %i\ttxMask: %x\n'%(bitMask,self.txData[self.txdataArrayOffset],nextBit,self.txmask))
             self.txdataLen -=1
             
 
@@ -408,16 +414,14 @@ class Node:
                 self.txdataIntOffset = 7 
                 self.txdataArrayOffset += 1
 
-
-        if nextBit == 0x0:
-            nextSymbol  = 0
-        elif nextBit == 0x1:
-            nextSymbol  = 1
-        else:
+        nextSymbol = 0
+        if nextBit:
+            nextSymbol = 0x80000000 >> self.txmask
+#       self.fid.write('next tx symbol: %x\n'%nextSymbol)
+        if self.typeRxTx == 0: # rx only
             return 0
-
-        return 0x80000000 >> self.txmask[nextSymbol]   
-
+        else:
+            return nextSymbol
 
 
 if __name__ == "__main__":
@@ -425,12 +429,16 @@ if __name__ == "__main__":
     
     txn.GetNextChannel()
     print txn.txmask
+    print 'rx %i'%txn.rxmask
     txn.GetNextChannel()
     print txn.txmask
+    print 'rx %i'%txn.rxmask
     txn.GetNextChannel()
     print txn.txmask
+    print 'rx %i'%txn.rxmask
     txn.GetNextChannel()
     print txn.txmask
+    print 'rx %i'%txn.rxmask
 
 #    b = [0xa50fa50f]
 #    print type(b[0])
@@ -440,88 +448,88 @@ if __name__ == "__main__":
 #        print '%x'%ii
 
     
-'''        
+        
 # header    
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
 
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
    
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
 
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
 
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
 
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
    
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
 
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
 
 
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
 
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
    
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
 
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
 
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
 
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
    
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
 
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0004000])
-    txn.getNextRxBits([0x0008000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x80004000])
+    txn.getNextRxBits([0x00008000])
 #
 # data
 #   txn.getNextRxBits([0x0008000])
@@ -624,4 +632,4 @@ if __name__ == "__main__":
 #   print '%x'%txn.getNextSymbol()
 #   print '%x'%txn.getNextSymbol()
 #   print ' ' 
-'''
+

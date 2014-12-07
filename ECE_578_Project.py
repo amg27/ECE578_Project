@@ -17,20 +17,15 @@ class NodePair:
         self.prx.start()
 
     def CompareResults(self):
-        self.ptx_conn.send(StatusMessage())
         self.prx_conn.send(StatusMessage())
-        passedA = False
         passedB = False
-        if self.ptx_conn.poll(1):
-            a = self.ptx_conn.recv()#clear buffer
-            print '%s checksum %x'%(self.txNode.name, a.status[2])
-            passedA = True
+        ba = StatusMessage()
         if self.prx_conn.poll(1):
             b = self.prx_conn.recv()#clear buffer
-            print '%s checksum %x'%(self.rxNode.name, a.status[3])
+            print '%s checksums rx %x calc %x'%(self.rxNode.name, b.status[3], b.status[4])
             passedB = True
-        if passedB and passedA:
-            if a.status[2] == b.status[3]:
+        if passedB :
+            if b.status[3] == b.status[4]:
                 return True
             else:
                 return False
@@ -65,26 +60,10 @@ if __name__ == '__main__':
     rc = runControl(5)
     
     # link number 1
-    nodePairs.append(NodePair(Node(seed=1,name='tx1',header=0xf9a80f12),
-                              Node(seed=1,name='rx1',header=0xf9a80f12))) 
-    nodePairs.append(NodePair(Node(seed=2,name='tx2',header=0xf9a81f12),
-                              Node(seed=2,name='rx2',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=3,name='tx3',header=0xf9a81f12),
-                              Node(seed=3,name='rx3',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=4,name='tx4',header=0xf9a81f12),
-                              Node(seed=4,name='rx4',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=5,name='tx5',header=0xf9a81f12),
-                              Node(seed=5,name='rx5',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=6,name='tx6',header=0xf9a81f12),
-                              Node(seed=6,name='rx6',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=7,name='tx7',header=0xf9a81f12),
-                              Node(seed=7,name='rx7',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=8,name='tx8',header=0xf9a81f12),
-                              Node(seed=8,name='rx8',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=9,name='tx9',header=0xf9a81f12),
-                              Node(seed=9,name='rx9',header=0xf9a81f12))) 
-    nodePairs.append(NodePair(Node(seed=10,name='tx10',header=0xf9a81f12),
-                              Node(seed=10,name='rx10',header=0xf9a81f12))) 
+    nodePairs.append(NodePair(Node(seed=1,name='tx1',header=0xf9a80f12,rtType=1,ss=True),
+                              Node(seed=1,name='rx1',header=0xf9a80f12,rtType=0,ss=True))) 
+#   nodePairs.append(NodePair(Node(seed=232,name='tx2',header=0xf9a80f12,rtType=1,ss=True),
+#                             Node(seed=232,name='rx2',header=0xf9a80f12,rtType=0,ss=True))) 
     for np in nodePairs:
         clientPool.append(np.ptx_conn) 
         clientPool.append(np.prx_conn)
@@ -92,11 +71,16 @@ if __name__ == '__main__':
 
 # set Transmit  Data 
     for np in nodePairs:
-        payload = 4*[None]
-        for ii in range(4):
+        arraySize = 16
+        payload = arraySize*[None]
+        for ii in range(arraySize):
             payload[ii] = random.randrange(0,255)
         np.SetTranmitData(payload)
-    
+        print payload 
+
+    # open file to store symbol data
+    fid = open('symbols','w')
+
     nextSymbol = [0]
     ndone = True
     countLoops = 0
@@ -117,7 +101,7 @@ if __name__ == '__main__':
                 nextS = con.recv()
                 if nextS.ty == 2:
                     nextSymbol[0] |= nextS.symbol
-#        print '%x'%nextSymbol[0] 
+        fid.write('%i : %s\n'%(curTS,format(nextSymbol[0],'032b'))) 
         
 
         curTS += 1
