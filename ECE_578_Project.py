@@ -3,7 +3,7 @@ from controller import runControl
 from MessageClass import * 
 from Node import Node
 import random
-
+from EveNode import *
 
 class NodePair:
     def __init__(self,txnode,rxnode):
@@ -62,8 +62,8 @@ if __name__ == '__main__':
     # link number 1
     nodePairs.append(NodePair(Node(seed=1,name='tx1',header=0xf9a80f12,rtType=1,ss=True),
                               Node(seed=1,name='rx1',header=0xf9a80f12,rtType=0,ss=True))) 
-#   nodePairs.append(NodePair(Node(seed=232,name='tx2',header=0xf9a80f12,rtType=1,ss=True),
-#                             Node(seed=232,name='rx2',header=0xf9a80f12,rtType=0,ss=True))) 
+    nodePairs.append(NodePair(Node(seed=7067,name='tx2',header=0xf9a80f12,rtType=1,ss=True),
+                              Node(seed=7067,name='rx2',header=0xf9a80f12,rtType=0,ss=True))) 
     for np in nodePairs:
         clientPool.append(np.ptx_conn) 
         clientPool.append(np.prx_conn)
@@ -81,6 +81,9 @@ if __name__ == '__main__':
     # open file to store symbol data
     fid = open('symbols','w')
 
+    # Create Eve Node
+    eveNode = EveNode()
+
     nextSymbol = [0]
     ndone = True
     countLoops = 0
@@ -89,6 +92,9 @@ if __name__ == '__main__':
     while ndone:
         curSymbol = nextSymbol
         nextSymbol = [0]
+        
+        # pass Current Symbol in to EveNode
+        eveNode.CompareOffset(curSymbol)
 
         # send current frame to all Rx/Tx nodes
         sm = SymbolMessage(curSymbol,ts=curTS)
@@ -101,7 +107,7 @@ if __name__ == '__main__':
                 nextS = con.recv()
                 if nextS.ty == 2:
                     nextSymbol[0] |= nextS.symbol
-        fid.write('%i : %s\n'%(curTS,format(nextSymbol[0],'032b'))) 
+        fid.write('%4.0i : %s\n'%(curTS,format(nextSymbol[0],'064b'))) 
         
 
         curTS += 1

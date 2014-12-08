@@ -77,13 +77,13 @@ class Node:
     def Symbol(self, msg):
         self.timeStamp = msg.timeStamp
         #Rx msg proccessing
-        self.GetNextChannel()
 #       self.fid.write('rxSymbol %x\trxmask: %i\ttxmask: %i\n'%(msg.symbol[0],self.rxmask,self.txmask))
         if not self.timeStamp == 0:
             self.getNextRxBits(msg.symbol)
 
         # send next tx bit
         nmsg = SymbolMessage(self.getNextSymbol())
+        self.GetNextChannel()
         return nmsg
 
     def Error(self, msg):
@@ -120,7 +120,7 @@ class Node:
             self.rxmask = self.txmask
             self.rxmask = self.txmask
             self.seed = (self.randA * self.seed + self.randB) % self.randC
-            self.txmask = self.seed >> 11
+            self.txmask = self.seed >> 10
         else:
             self.rxmask = 0
             self.txmask = 0
@@ -155,7 +155,7 @@ class Node:
         self.txdataIntOffset = 7
         self.txdataArrayOffset = 0
         self.txChecksum = 0
-        self.fid.write('------------------------------tx checksum set to 0 -----------------')
+        self.fid.write('------------------------------tx checksum set to 0 -----------------\n')
         # Receive Variables
         self.rxData = [0]
         self.rxdataIntOffset = 7
@@ -206,7 +206,7 @@ class Node:
 
     # receive next 2 bits 
     def getNextRxBits(self, symbol):
-        mask = 0x80000000 >> self.rxmask
+        mask = 0x8000000000000000 >> self.rxmask
 #       self.fid.write('mask %x\n'%mask)
         # fix this if longer symbols are used
         if mask & symbol[0] >= 1:
@@ -416,7 +416,7 @@ class Node:
 
         nextSymbol = 0
         if nextBit:
-            nextSymbol = 0x80000000 >> self.txmask
+            nextSymbol = 0x8000000000000000 >> self.txmask
 #       self.fid.write('next tx symbol: %x\n'%nextSymbol)
         if self.typeRxTx == 0: # rx only
             return 0
