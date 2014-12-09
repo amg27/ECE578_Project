@@ -66,10 +66,9 @@ class EveNode:
             if path.progress== 16:
                 print 'init seed found: %i'%path.initSeed
                 self.searchPaths.remove(path)
-        for ii in self.searchPaths:
-            if ii.initSeed == 1:
-                print 'yes'
-
+        print 'Number of Search Path: %i'%len(self.searchPaths) 
+        if len(self.searchPaths) == 1:
+            print 'Initseed Guess = %i'%self.searchPaths[0].initSeed
         # create Search Pattern
         # append newpaths
         if self.firstPass:

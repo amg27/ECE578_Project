@@ -64,6 +64,12 @@ if __name__ == '__main__':
                               Node(seed=1,name='rx1',header=0xf9a80f12,rtType=0,ss=True))) 
     nodePairs.append(NodePair(Node(seed=7067,name='tx2',header=0xf9a80f12,rtType=1,ss=True),
                               Node(seed=7067,name='rx2',header=0xf9a80f12,rtType=0,ss=True))) 
+    nodePairs.append(NodePair(Node(seed=8067,name='tx3',header=0xf9a80f12,rtType=1,ss=True),
+                              Node(seed=8067,name='rx3',header=0xf9a80f12,rtType=0,ss=True))) 
+    nodePairs.append(NodePair(Node(seed=9077,name='tx4',header=0xf9a80f12,rtType=1,ss=True),
+                              Node(seed=9077,name='rx4',header=0xf9a80f12,rtType=0,ss=True))) 
+    nodePairs.append(NodePair(Node(seed=6067,name='tx5',header=0xf9a80f12,rtType=1,ss=True),
+                              Node(seed=6067,name='rx5',header=0xf9a80f12,rtType=0,ss=True))) 
     for np in nodePairs:
         clientPool.append(np.ptx_conn) 
         clientPool.append(np.prx_conn)
